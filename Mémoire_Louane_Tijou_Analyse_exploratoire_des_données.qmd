@@ -147,22 +147,22 @@ tableau
 par(mfrow=c(2,2))
 
 hist(base$Origine.Métropole,
-     xlab = "Trafic origine Métropole",
+     xlab = "Trafic origine Métropole (passagers) ",
      main = "",
      col = "lightgreen")
 
 hist(base$Autres.origines,
-     xlab = "Trafic autres origines",
+     xlab = "Trafic autres origines (passagers) ",
      main = "",
      col = "skyblue")
 
 hist(base$Nbr_nuits,
-     xlab = "Nombre de nuitées",
+     xlab = "Nombre de nuitées (en milliers)",
      main = "",
      col = "gold")
 
 hist(base$Pluie_mm,
-     xlab = "Précipitations (mm)",
+     xlab = "Pluie (mm)",
      main = "",
      col = "plum")
 
@@ -172,12 +172,12 @@ hist(base$Vent_kmh,
      col = "pink")
 
 hist(base$anomalie_pluie,
-     xlab = "Anomalie de pluie",
+     xlab = "Anomalie de pluie (mm)",
      main = "",
      col = "tomato")
 
 hist(base$anomalie_vent,
-     xlab = "Anomalie de vent",
+     xlab = "Anomalie de vent (km/h)",
      main = "",
      col = "khaki")
 ```
@@ -189,22 +189,22 @@ par(mfrow=c(2,2))
 
 
 boxplot(base$Origine.Métropole,
-        xlab = "Trafic origine Métropole",
+        xlab = "Trafic origine Métropole (passagers)",
         main = "",
         col = "lightgreen")
 
 boxplot(base$Autres.origines,
-        xlab = "Trafic autres origines",
+        xlab = "Trafic autres origines (passagers)",
         main = "",
         col = "skyblue")
 
 boxplot(base$Nbr_nuits,
-        xlab = "Nombre de nuitées",
+        xlab = "Nombre de nuitées (en milliers)",
         main = "",
         col = "gold")
 
 boxplot(base$Pluie_mm,
-        xlab = "Précipitations (mm)",
+        xlab = "Pluie (mm)",
         main = "",
         col = "plum")
 
@@ -214,12 +214,12 @@ boxplot(base$Vent_kmh,
         col = "pink")
 
 boxplot(base$anomalie_pluie,
-        xlab = "Anomalie de pluie",
+        xlab = "Anomalie de pluie (mm)",
         main = "",
         col = "tomato")
 
 boxplot(base$anomalie_vent,
-        xlab = "Anomalie de vent",
+        xlab = "Anomalie de vent (km/h)",
         main = "",
         col = "khaki")
 ```
