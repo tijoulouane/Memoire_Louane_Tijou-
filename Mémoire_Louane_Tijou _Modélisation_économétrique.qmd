@@ -4,6 +4,7 @@ format: html
 ---
 
 # 1. Chargement des librairies
+
 ```{r}
 library(readxl)
 library(dplyr)
@@ -15,15 +16,16 @@ library(tseries)
 ```
 
 # 2. Chargement des données
+
 ```{r}
-base <- readxl::read_xlsx("base_avec_mois_dichothomique.xlsx")
+base <- readxl::read_xlsx("Base_avec_mois_dichotomiques.xlsx")
 
 
 summary(base)
 ```
 
-
 # 3. Préparation des variables
+
 ```{r}
 dummies_mois <- c("D1", "D2", "D3", "D4", "D5", "D6", 
                   "D7", "D8", "D9", "D10", "D12")
@@ -42,7 +44,6 @@ base <- base %>%
 # 4. Modèles MCO
 
 ## 4.1 Variable dépendante : Trafic autre origine
-
 
 ```{r}
 # Autres origines - 1) evenement_climatique
@@ -108,7 +109,6 @@ mod_tourisme_extremes <- lm(log(Nbr_nuits) ~ pluie_extreme + vent_extreme + D1 +
 mod_tourisme_meteo_extreme <- lm(log(Nbr_nuits) ~ meteo_extreme + D1 + D2 + D3 + D4 + D5 + D6 + D7 + D8 + D9 + D10 + D12, data = base)
 ```
 
-
 # 5. Visualisation des modèles
 
 ```{r}
@@ -148,7 +148,7 @@ summary(mod_autres_meteo_extreme)
 
 ```
 
-# 6. Validation des hypothèses 
+# 6. Validation des hypothèses
 
 ```{r}
 # Fonction pour afficher les tests de validation d'un modèle
@@ -225,7 +225,6 @@ tester_validation(mod_autres_extremes, "Autres origines - pluie_extreme + vent_e
 tester_validation(mod_autres_meteo_extreme, "Autres origines - meteo_extreme")
 ```
 
-
 # 7. Interprétation avec les autocorrélations
 
 ```{r}
@@ -276,7 +275,7 @@ modele_global_metropole <- lm(`Origine.Métropole` ~ cyclone + activite_volcaniq
 modele_global_autres <- lm(Autres.origines ~ cyclone + activite_volcanique + anomalie_pluie + vent_extreme  + D1 + D2 + D3 + D4 + D5 + D6 + D7 + D8 + D9 + D10 + D12, data = base)
 ```
 
-## 8.1 Séléction de variable avec "Best subset" 
+## 8.1 Séléction de variable avec "Best subset"
 
 ```{r}
 best_tourisme <- dredge(modele_global_tourisme, fixed = dummies_mois, rank = "BIC")
@@ -296,23 +295,23 @@ mod_best_metropole <- get.models(best_metropole, subset = 1)[[1]]
 mod_best_autres <- get.models(best_autres, subset = 1)[[1]]
 ```
 
-### 8.1.1 Test des hypothèses 
+### 8.1.1 Test des hypothèses
+
 ```{r}
 tester_validation(mod_best_tourisme, "Best subset - Tourisme")
 tester_validation(mod_best_metropole, "Best subset - Origine Métropole")
 tester_validation(mod_best_autres, "Best subset - Autres origines")
 ```
 
-### 8.1.2 Interprétation des résultats avec Newey West 
+### 8.1.2 Interprétation des résultats avec Newey West
+
 ```{r}
 coeftest(mod_best_tourisme, vcov = NeweyWest(mod_best_tourisme, lag = 12, prewhite = FALSE))
 coeftest(mod_best_metropole, vcov = NeweyWest(mod_best_metropole, lag = 12, prewhite = FALSE))
 coeftest(mod_best_autres, vcov = NeweyWest(mod_best_autres, lag = 12, prewhite = FALSE))
 ```
 
-
-
-## 8.2 Séléction de variable avec "GETS" 
+## 8.2 Séléction de variable avec "GETS"
 
 ```{r}
 variables_climatiques <- c(
@@ -383,15 +382,16 @@ gets_metropole$variables_retenues
 gets_autres$variables_retenues
 ```
 
+### 8.2.1 Test des hypothèses
 
-### 8.2.1 Test des hypothèses 
 ```{r}
 tester_validation(gets_tourisme$modele_final, "GETS - Tourisme")
 tester_validation(gets_metropole$modele_final, "GETS - Origine Métropole")
 tester_validation(gets_autres$modele_final, "GETS - Autres origines")
 ```
 
-### 8.2.2 Interprétation des résultats avec Newey West 
+### 8.2.2 Interprétation des résultats avec Newey West
+
 ```{r}
 gets_tourisme$resultats_newey_west
 gets_metropole$resultats_newey_west
@@ -410,13 +410,11 @@ summary(gets_metropole$modele_final)
 summary(gets_autres$modele_final)
 ```
 
-
-
-
 # 9. Modèles complémentaires en différence première et logarithmique
 
-## 9.1 Transformation du trafic aérien en provenance des autres origines 
-## 9.1.2 Différence première 
+## 9.1 Transformation du trafic aérien en provenance des autres origines
+
+## 9.1.2 Différence première
 
 ```{r}
 base_diff <- base |>
@@ -427,7 +425,7 @@ base_diff <- base |>
   filter(!is.na(diff_Autres_origines))
 ```
 
-## 9.1.1 Différence logarithmique 
+## 9.1.1 Différence logarithmique
 
 ```{r}
 base_diff_log <- base |>
@@ -437,7 +435,8 @@ base_diff_log <- base |>
   filter(!is.na(diff_log_Autres_origines))
 ```
 
-## 9.2 Modèles simples en différence logarithmique 
+## 9.2 Modèles simples en différence logarithmique
+
 ### 9.2.1 Estimation des modèles simples
 
 ```{r}
@@ -473,6 +472,7 @@ mod_dlog_autres_meteo_extreme <- lm(
 ```
 
 ### 9.2.2 Tests de validation des modèles simples
+
 ```{r}
 tester_validation(mod_dlog_autres_evenement, "Diff log Autres origines - evenement_meteorologique")
 tester_validation(mod_dlog_autres_cyclone, "Diff log Autres origines - cyclone")
@@ -497,7 +497,7 @@ coeftest(
   vcov = NeweyWest(mod_dlog_autres_extremes, lag = 12, prewhite = FALSE))
 ```
 
-### 9.2.4 Résultats des modélisations 
+### 9.2.4 Résultats des modélisations
 
 ```{r}
 summary(mod_dlog_autres_evenement)
@@ -517,7 +517,8 @@ modele_global_diff_autres <- lm(
   data = base_diff)
 ```
 
-## 9.3.1 Sélection de variables par la méthode Best Subset, tests et résultats 
+## 9.3.1 Sélection de variables par la méthode Best Subset, tests et résultats
+
 ```{r}
 options(na.action = "na.fail")
 
@@ -540,7 +541,7 @@ coeftest(mod_best_diff_autres, vcov = NeweyWest(mod_best_diff_autres, lag = 12, 
 summary(mod_best_diff_autres)
 ```
 
-## 9.4 Sélection de variables par la méthode GETS en différence logarithmique, tests et résultats 
+## 9.4 Sélection de variables par la méthode GETS en différence logarithmique, tests et résultats
 
 ```{r}
 
@@ -575,5 +576,3 @@ adf.test(base_diff$diff_Autres_origines)
 # En différence logarithmique 
 adf.test(base_diff_log$diff_log_Autres_origines)
 ```
-
-

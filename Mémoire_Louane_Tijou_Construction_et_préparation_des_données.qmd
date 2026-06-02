@@ -354,6 +354,6 @@ summary(base)
 # 14. Export de la base finale
 
 ```{r}
-write_xlsx(base, "base_avec_mois_dichothomique.xlsx")
+write_xlsx(base, "Base_avec_mois_dichotomiques.xlsx")
 getwd()
 ```

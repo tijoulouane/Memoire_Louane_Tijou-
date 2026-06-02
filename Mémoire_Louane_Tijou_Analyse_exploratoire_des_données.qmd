@@ -23,7 +23,7 @@ library(urca)
 # 2. Importation de la base de données
 
 ```{r}
-base <- readxl::read_xlsx("base_avec_mois_dichothomique.xlsx")
+base <- readxl::read_xlsx("Base_avec_mois_dichotomiques.xlsx")
 ```
 
 # 3. Analyse univariée
