@@ -1,0 +1,31 @@
+---
+title: "Mémoire Louane Tijou – Création de la base de données méteo"
+format: html
+---
+
+# Création de la base de données météo par mois
+
+```{r}
+library(dplyr)
+library(readxl)
+library(lubridate)
+
+# Import de la base de données initial par jours 
+meteo <- readxl::read_xlsx("meteo.xlsx")
+
+meteo$date <- as.Date(meteo$date)
+
+meteo$month <- format(meteo$date, "%Y-%m")
+
+# Agrégation par mois et calcul des moyennes 
+meteo_mois <- meteo |>
+  group_by(month) |>
+  summarise(
+    Pluie_mm = mean(prcp, na.rm = TRUE),
+    Vent_m_s = mean(wspd, na.rm = TRUE)) |>
+  ungroup()
+
+head(meteo_mois)
+write.csv(meteo_mois, "base_meteo_mois.csv", row.names = FALSE)
+getwd()
+```

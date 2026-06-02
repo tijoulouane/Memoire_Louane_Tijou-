@@ -1,0 +1,357 @@
+---
+title: "Mémoire Louane Tijou – Construction et préparation des données"
+format: html
+---
+
+# 1. Chargement des librairies
+
+Appel des libraires qui serviront par la suite
+
+```{r}
+library(readxl)
+library(dplyr)
+library(writexl)
+library(naniar)
+library(imputeTS)
+library(gtrendsR)
+library(RColorBrewer)
+library(car)
+library(lmtest)
+library(lubridate)
+library(ggplot2)
+```
+
+# 2. Importation des 4 bases de données
+
+```{r}
+Trafic_aérien <- read.csv("Trafic_aérien.csv",sep = "_", header = TRUE)
+Fréquentation_hotel <- read.csv("Fréquentation_hotel.csv",sep = ";", header = TRUE, skip  = 3)
+evenement_meteorologique  <- readxl::read_xlsx("évenement_météorologique.xlsx")
+meteo <- read.csv("base_meteo_mois.csv")
+```
+
+# 3. Nettoyage et renommage des variables
+
+```{r}
+Fréquentation_hotel <- Fréquentation_hotel |>
+  rename(
+    Nbr_nuits = "X",
+    Code = "X.1",
+    Date = "Période")
+
+Trafic_aérien <- Trafic_aérien |>
+  rename(
+    Date = "Date......")
+
+meteo <- meteo |>
+  rename(
+    Date = "month",
+    Vent_kmh = "Vent_m_s")
+```
+
+# 4. Fusion des bases de données
+
+Trafic aérien et Fréquentation à l'hôtel
+
+```{r}
+base <- inner_join(Trafic_aérien, Fréquentation_hotel, by = "Date")
+```
+
+# 5. Construction des variables climatiques
+
+## 5.1 Création de la variable date
+
+```{r}
+evenement_meteorologique$Date <- paste0(
+  evenement_meteorologique$`Start Year`,
+  "-",
+  sprintf("%02d", evenement_meteorologique$`Start Month`))
+```
+
+## 5.2 Sélection des variables utiles
+
+```{r}
+evenement_meteorologique <- evenement_meteorologique[, c(
+  "Date",
+  "Disaster Type",
+  "Disaster Subtype")]
+```
+
+## 5.3 Création des variables indicatrices
+
+```{r}
+evenement_meteorologique$evenement_meteorologique <- 1
+```
+
+```{r}
+evenement_meteorologique$cyclone <- ifelse(evenement_meteorologique$`Disaster Subtype` == "Tropical cyclone", 1, 0)
+
+```
+
+# 6. Fusion avec les événements climatiques et données météo
+
+```{r}
+base <- left_join(base, evenement_meteorologique, by = "Date")
+
+base$evenement_meteorologique[is.na(base$evenement_meteorologique)] <- 0
+base$cyclone[is.na(base$cyclone)] <- 0
+
+base <- left_join(base, meteo, by = "Date")
+```
+
+# 7. Sélection des variables finales
+
+```{r}
+base <- base[, c(
+  "Date",
+  "Origine.Métropole",
+  "Autres.origines",
+  "Nbr_nuits",
+  "evenement_meteorologique",
+  "cyclone",
+  "Pluie_mm",
+  "Vent_kmh")]
+```
+
+# 8. Traitement des valeurs manquantes
+
+## 8.1 Identification des valeurs manquantes
+
+```{r}
+gg_miss_var(base)
+```
+
+Les 3 valeurs manquantes se trouve durant la période du covid 19
+
+## 8.2 Imputation par filtre de Kalman
+
+```{r}
+# série en série temporelle 
+ts_base <- ts(base$Nbr_nuits,
+              start = c(2011, 1),  
+              frequency = 12)
+```
+
+```{r}
+# Visualisation
+plot(ts_base,
+     main = "Série temporelle des nuitées hôtelières",
+     ylab = "Nbr de nuitées",
+     xlab = "Année")
+```
+
+```{r}
+# Remplacer les NA 
+base$Nbr_nuits_kalman <- na_kalman(base$Nbr_nuits, model = "StructTS")
+
+# Visualisation
+plot(ts(base$Nbr_nuits_kalman, start = c(2011,1), frequency = 12),
+     col = "red",
+     lwd = 2,
+     main = "",
+     xlab = "Années",
+     ylab = "Nuitées hôtelières (en milliers)",
+     cex.lab = 2,
+     cex.axis = 1.2)
+```
+
+```{r}
+# Remplacer les NA par les valeurs imputées dans la base 
+base$Nbr_nuits[is.na(base$Nbr_nuits)] <- base$Nbr_nuits_kalman[is.na(base$Nbr_nuits)]
+
+# Supprimer la colonne
+base <- base[, !(names(base) %in% ("Nbr_nuits_kalman"))]
+
+# Vérification
+sum(is.na(base$Nbr_nuits)) 
+```
+
+# 9. Construction des variables météorologiques
+
+```{r}
+base <- base |>
+  mutate(mois = substr(Date, 6, 7))
+
+normales_mensuelles <- base %>%
+  group_by(mois) %>%
+  summarise(
+    moy_pluie_mois = mean(Pluie_mm, na.rm = TRUE),
+    moy_vent_mois  = mean(Vent_kmh, na.rm = TRUE))
+
+base <- base %>%
+  left_join(normales_mensuelles, by = "mois") %>%
+  mutate(
+    anomalie_pluie = pmax(0, Pluie_mm - moy_pluie_mois),
+    anomalie_vent  = pmax(0, Vent_kmh - moy_vent_mois))
+```
+
+## 9.1 Définition des événements extrêmes
+
+```{r}
+base$pluie_extreme <- ifelse(base$anomalie_pluie > 9, 1, 0)
+base$vent_extreme <- ifelse(base$anomalie_vent > 4, 1, 0)
+
+base$meteo_extreme <- ifelse(
+  base$pluie_extreme == 1 | base$vent_extreme == 1, 1, 0)
+```
+
+# 10. Variable climatique globale
+
+```{r}
+base$evenement_meteorologique <- ifelse(
+  base$evenement_meteorologique == 1 | base$cyclone == 1 | base$meteo_extreme == 1,
+  1, 0)
+```
+
+# 11. Variable activité volcanique
+
+## 11.1 Google trend
+
+```{r}
+# Requête pour les éruptions du Piton de la Fournaise
+#trend_volcan <- gtrends(
+  #keyword = "Piton de la Fournaise", 
+  #geo = "RE", 
+  #time = "all")$interest_over_time
+
+#write.csv(trend_volcan, "trend_volcan.csv", row.names = FALSE)
+
+# Agréger par mois
+#trend_volcan_monthly <- trend_volcan %>%
+ # mutate(date = as.Date(date)) %>%
+  #group_by(month = format(date, "%Y-%m")) %>%
+  #summarise(hits = mean(hits, na.rm = TRUE))
+
+# Ajouter directement à la base
+#base$google_trends_volcan <- trend_volcan_monthly$hits
+
+# Aperçu
+#head(trend_volcan_monthly)
+#head(base$google_trends_volcan)
+```
+
+```{r}
+# Importation de la base Google Trends
+donnees_activite_volcanique <- read.csv(
+  "données_activité_volcanique.csv",
+  stringsAsFactors = FALSE,
+  check.names = FALSE)
+
+names(donnees_activite_volcanique)[1] <- "Date"
+names(donnees_activite_volcanique)[2] <- "indice_google_trends"
+
+
+donnees_activite_volcanique <- donnees_activite_volcanique |>
+  mutate(
+    Date = as.Date(Date),
+    indice_google_trends = as.numeric(indice_google_trends)
+  ) |>
+  filter(Date >= as.Date("2011-01-01"),
+         Date <= as.Date("2023-12-01"))
+
+#Création de la variable binaire d'activité volcanique
+donnees_activite_volcanique <- donnees_activite_volcanique |>
+  mutate(
+    activite_volcanique = ifelse(indice_google_trends > 40, 1, 0))
+
+# Vérification
+table(donnees_activite_volcanique$activite_volcanique)
+head(donnees_activite_volcanique)
+```
+
+```{r}
+donnees_activite_volcanique_graph <- donnees_activite_volcanique |>
+  mutate(
+    Date_graph = as.Date(paste0(Date, "-01")),
+    seuil_volcan = ifelse(indice_google_trends > 40,
+                          "Au-dessus du seuil",
+                          "Sous le seuil"))
+
+graph_activite_volcanique <- ggplot(donnees_activite_volcanique_graph,
+                                    aes(x = Date_graph, y = indice_google_trends)) +
+  geom_line(color = "grey40", linewidth = 0.6, alpha = 0.8) +
+  geom_point(aes(color = seuil_volcan), size = 2.2) +
+  geom_hline(yintercept = 40, color = "red", linetype = "dashed", linewidth = 0.8) +
+  annotate(
+    "label",
+    x = as.Date("2012-01-01"),
+    y = max(donnees_activite_volcanique_graph$indice_google_trends, na.rm = TRUE) * 0.85,
+    label = "Seuil activité volcanique = 40",
+    color = "red",
+    fill = "white",
+    linewidth = 0.3,
+    size = 3.5) +
+  scale_color_manual(
+    values = c("Sous le seuil" = "steelblue", "Au-dessus du seuil" = "red")) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  labs(
+    title = "Indice Google Trends lié au Piton de la Fournaise",
+    subtitle = "Identification des mois d’activité volcanique retenus",
+    x = "Année",
+    y = "Indice Google Trends",
+    color = "") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(size = 10),
+    axis.text.x = element_text(angle = 40, hjust = 1),
+    legend.position = "bottom")
+
+graph_activite_volcanique
+```
+
+```{r}
+
+donnees_activite_volcanique <- donnees_activite_volcanique |>
+  mutate(Date = format(Date, "%Y-%m"))
+
+base <- base |>
+  left_join(
+    donnees_activite_volcanique |>
+      select(Date, indice_google_trends, activite_volcanique),
+    by = "Date")
+```
+
+# 12. Prise en compte de la saisonnalité
+
+```{r}
+base <- base |>
+  mutate(
+    D1 = ifelse(mois == "01", 1, 0),
+    D2 = ifelse(mois == "02", 1, 0),
+    D3 = ifelse(mois == "03", 1, 0),
+    D4 = ifelse(mois == "04", 1, 0),
+    D5 = ifelse(mois == "05", 1, 0),
+    D6 = ifelse(mois == "06", 1, 0),
+    D7 = ifelse(mois == "07", 1, 0),
+    D8 = ifelse(mois == "08", 1, 0),
+    D9 = ifelse(mois == "09", 1, 0),
+    D10 = ifelse(mois == "10", 1, 0),
+    D12 = ifelse(mois == "12", 1, 0))
+```
+
+# 13. Transformation des variables en facteurs
+
+```{r}
+base$cyclone <- factor(base$cyclone)
+base$pluie_extreme <- factor(base$pluie_extreme)
+base$vent_extreme <- factor(base$vent_extreme)
+base$meteo_extreme <- factor(base$meteo_extreme)
+base$evenement_meteorologique <- factor(base$evenement_meteorologique)
+base$activite_volcanique <- factor(base$activite_volcanique)
+
+base$moy_pluie_mois <- NULL 
+base$moy_vent_mois <- NULL
+base$mois <- NULL 
+base$indice_google_trends <-NULL
+
+str(base)
+summary(base)
+```
+
+# 14. Export de la base finale
+
+```{r}
+write_xlsx(base, "base_avec_mois_dichothomique.xlsx")
+getwd()
+```

@@ -1,0 +1,524 @@
+---
+title: "Mémoire Louane Tijou – Analyse exploratoire des données"
+format: docx
+editor: visual
+---
+
+# 1. Chargement des librairies
+
+```{r}
+library(readxl)
+library(EnvStats)
+library(ggplot2)
+library(dplyr)
+library(knitr)
+library(corrplot)
+library(vcd)
+library(reshape2)
+library(seastests)
+library(tseries)
+library(urca)
+```
+
+# 2. Importation de la base de données
+
+```{r}
+base <- readxl::read_xlsx("base_avec_mois_dichothomique.xlsx")
+```
+
+# 3. Analyse univariée
+
+## 3.1 Vérification des valeurs manquante
+
+```{r}
+#gg_miss_var(base)
+# Aucun NA détecté 
+```
+
+## 3.2 Analyse des variables qualitatives
+
+### 3.2.1 Visualisation des répartitions
+
+```{r}
+variables_qualitatives_binaire  <- c("evenement_meteorologique","cyclone","activite_volcanique","pluie_extreme","vent_extreme","meteo_extreme")
+
+plot <- list()
+
+for (var in variables_qualitatives_binaire) {
+  
+  table_freq <- base |>
+    count(!!sym(var)) |>
+    mutate(pourcentage = n / sum(n) * 100)  
+  
+  table_freq <- table_freq |>
+    dplyr::mutate(
+      !!sym(var) := factor(!!sym(var),
+                           levels = c(0, 1),
+                           labels = c("Non", "Oui")))
+  
+  
+  # Nombre de modalités dans ce graphique
+  n_mod <- length(levels(table_freq[[var]]))
+  
+  # Palette automatique 
+  palette_var <- brewer.pal(
+    n = max(3, n_mod),  
+    name = "Set2" )[1:n_mod]
+  
+  p <- ggplot(table_freq, aes(x = "", y = pourcentage, fill = !!sym(var))) +
+    geom_bar(width = 1, stat = "identity") +
+    coord_polar("y") +
+    labs(title = paste("Répartition de", var, "en %")) +
+    theme_void() +
+    theme(legend.title = element_blank()) +  
+    scale_fill_manual(values = palette_var) +
+    geom_text(aes(label = paste0(round(pourcentage, 1), "%")),
+              position = position_stack(vjust = 0.5))
+  
+  plot[[var]] <- p}
+
+plot
+```
+
+### 3.2.2 Tableau récapitulatif
+
+```{r}
+tableau_recap <- lapply(variables_qualitatives_binaire, function(var) {
+  
+  base |>
+    count(!!sym(var)) |>
+    mutate(
+      pourcentage = round(n / sum(n) * 100, 1),
+      modalite = ifelse(!!sym(var) == 1, "Oui", "Non")
+    ) |>
+    select(modalite, n, pourcentage) |>
+    mutate(variable = var)
+  
+}) |>
+  bind_rows() |>
+  tidyr::pivot_wider(
+    names_from = modalite,
+    values_from = c(n, pourcentage),
+    names_glue = "{.value}_{modalite}"
+  )
+
+tableau_recap <- tableau_recap |>
+  rename(
+    Variable = variable,
+    `Nombre de non` = n_Non,
+    `Nombre de oui` = n_Oui,
+    `Non (%)` = pourcentage_Non,
+    `Oui (%)` = pourcentage_Oui
+  )
+
+tableau_recap
+```
+
+## 3.3 Analyse des variables quantitatives
+
+### 3.3.1 Statistiques descriptives
+
+```{r}
+variables_quantitatives <- c(
+  "Origine.Métropole","Autres.origines","Nbr_nuits",
+  "Pluie_mm","Vent_kmh","anomalie_pluie","anomalie_vent")
+
+tableau <- lapply(variables_quantitatives, function(var) {
+  x <- base[[var]]
+  if (is.numeric(x)) {
+    data.frame(
+      Variable = var,
+      Moyenne = round(mean(x, na.rm = TRUE), 2),
+      Médiane = round(median(x, na.rm = TRUE), 2),
+      Minimum = round(min(x, na.rm = TRUE), 2),
+      Maximum = round(max(x, na.rm = TRUE), 2),
+      Ecart_type = round(sd(x, na.rm = TRUE), 2),
+      stringsAsFactors = FALSE
+    )
+  }
+}) |> bind_rows()
+
+tableau
+```
+
+### 3.3.2 Distribution des variables
+
+```{r}
+par(mfrow=c(2,2))
+
+hist(base$Origine.Métropole,
+     xlab = "Trafic origine Métropole",
+     main = "",
+     col = "lightgreen")
+
+hist(base$Autres.origines,
+     xlab = "Trafic autres origines",
+     main = "",
+     col = "skyblue")
+
+hist(base$Nbr_nuits,
+     xlab = "Nombre de nuitées",
+     main = "",
+     col = "gold")
+
+hist(base$Pluie_mm,
+     xlab = "Précipitations (mm)",
+     main = "",
+     col = "plum")
+
+hist(base$Vent_kmh,
+     xlab = "Vitesse du vent (km/h)",
+     main = "",
+     col = "pink")
+
+hist(base$anomalie_pluie,
+     xlab = "Anomalie de pluie",
+     main = "",
+     col = "tomato")
+
+hist(base$anomalie_vent,
+     xlab = "Anomalie de vent",
+     main = "",
+     col = "khaki")
+```
+
+### 3.3.3 Détection des valeurs extrêmes
+
+```{r}
+par(mfrow=c(2,2))
+
+
+boxplot(base$Origine.Métropole,
+        xlab = "Trafic origine Métropole",
+        main = "",
+        col = "lightgreen")
+
+boxplot(base$Autres.origines,
+        xlab = "Trafic autres origines",
+        main = "",
+        col = "skyblue")
+
+boxplot(base$Nbr_nuits,
+        xlab = "Nombre de nuitées",
+        main = "",
+        col = "gold")
+
+boxplot(base$Pluie_mm,
+        xlab = "Précipitations (mm)",
+        main = "",
+        col = "plum")
+
+boxplot(base$Vent_kmh,
+        xlab = "Vitesse du vent (km/h)",
+        main = "",
+        col = "pink")
+
+boxplot(base$anomalie_pluie,
+        xlab = "Anomalie de pluie",
+        main = "",
+        col = "tomato")
+
+boxplot(base$anomalie_vent,
+        xlab = "Anomalie de vent",
+        main = "",
+        col = "khaki")
+```
+
+```{r}
+rosnerTest(base$Origine.Métropole, k = 10)
+rosnerTest(base$Pluie_mm, k = 10)
+rosnerTest(base$anomalie_vent, k = 5)
+rosnerTest(base$anomalie_pluie, k = 10)
+```
+
+# 4. Analyse bivariée
+
+## 4.1 Relations entre variables quantitatives
+
+### 4.1.1 Vérification si les varaibles quantitatives suivent une loi normale
+
+```{r}
+variables <- c(
+  "Origine.Métropole", "Autres.origines", "Nbr_nuits",
+  "Pluie_mm", "Vent_kmh","anomalie_pluie")
+
+shapiro_results <- data.frame(
+  Variable = variables,
+  p_value = sapply(variables, function(v) {
+    shapiro.test(base[[v]])$p.value
+  }),
+  Normalite = sapply(variables, function(v) {
+    ifelse(shapiro.test(base[[v]])$p.value > 0.05, "Oui", "Non")}))
+
+shapiro_results
+```
+
+### 4.1.2 Matrice de corrélation
+
+```{r}
+
+pairs(base[variables_quantitatives])
+
+matrice_corr <- cor(base[variables_quantitatives],
+                    use = "complete.obs",
+                    method = "spearman")
+
+corrplot(matrice_corr,
+         method = "color",
+         type = "upper",
+         addCoef.col = "black",
+         number.cex = 0.7,
+         tl.col = "black",
+         tl.srt = 45)
+
+
+kable(round(matrice_corr, 2),
+      caption = "Matrice de corrélation des variables quantitatives")
+
+```
+
+## 4.2 Relations entre variables qualitatives
+
+```{r}
+variables_quali <- variables_qualitatives_binaire
+# matrice vide
+correlation_matrix <- matrix(NA,
+                             nrow = length(variables_quali),
+                             ncol = length(variables_quali))
+
+colnames(correlation_matrix) <- variables_quali
+rownames(correlation_matrix) <- variables_quali
+
+for (i in seq_along(variables_quali)) {
+  for (j in seq_along(variables_quali)) {
+    
+    if (i == j) {
+      correlation_matrix[i, j] <- 1
+    } else {
+      
+      temp <- na.omit(base[, c(variables_quali[i], variables_quali[j])])
+      
+      tab <- table(temp[[1]], temp[[2]])
+      
+      # vérifie qu'on a bien un tableau exploitable
+      if (min(dim(tab)) > 1) {
+        correlation_matrix[i, j] <- assocstats(tab)$cramer
+      } else {
+        correlation_matrix[i, j] <- NA
+      }
+    }
+  }
+}
+
+correlation_data <- melt(correlation_matrix,
+                         varnames = c("Variables_qualitatives_1", "Variables_qualitatives_2"),
+                         value.name = "Cramers_V")
+
+ggplot(correlation_data, aes(Variables_qualitatives_1, Variables_qualitatives_2, fill = Cramers_V)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "white", high = "steelblue", na.value = "grey90") +
+  labs(title = "Matrice de Cramér (variables qualitatives)",
+       fill = "Cramér V") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## 4.3 Relations quali-quanti
+
+```{r}
+variables_quali <- c("cyclone","activite_volcanique","pluie_extreme",
+                     "vent_extreme")
+
+variables_quanti <- c("Origine.Métropole","Autres.origines","Nbr_nuits")
+
+tableau_quali_quanti <- lapply(variables_quali, function(var_quali) {
+  lapply(variables_quanti, function(var_quanti) {
+    base %>%
+      group_by(.data[[var_quali]]) %>%
+      summarise(
+        Moyenne = round(mean(.data[[var_quanti]], na.rm = TRUE), 2),
+        Mediane = round(median(.data[[var_quanti]], na.rm = TRUE), 2),
+        Effectif = n(),
+        .groups = "drop"
+      ) %>%
+      mutate(
+        Variable_quali = var_quali,
+        Variable_quanti = var_quanti
+      ) %>%
+      rename(Modalite = 1)
+  }) %>% bind_rows()
+}) %>% bind_rows()
+
+tableau_quali_quanti
+
+kable(tableau_quali_quanti,
+      caption = "Statistiques descriptives bivariées entre variables qualitatives binaires et variables quantitatives")
+```
+
+# 5. Analyse de la saisonnalité
+
+```{r}
+trafic_ts <- ts(base$Autres.origines, frequency = 12)
+trafic_ts1 <- ts(base$Origine.Métropole, frequency = 12)
+trafic_ts2 <- ts(base$Nbr_nuits, frequency = 12)
+ 
+cat("=== Test de saisonnalité : Autres origines ===\n")
+combined_test(trafic_ts)
+
+cat("\n=== Test de saisonnalité : Origine Métropole ===\n")
+combined_test(trafic_ts1)
+
+cat("\n=== Test de saisonnalité : Nombre de nuitées ===\n")
+combined_test(trafic_ts2)
+```
+
+# 6. Analyse de la stationnarité
+
+```{r}
+variables_a_tester <- c( "Origine.Métropole", 
+                         "Autres.origines", "Nbr_nuits",
+                         "Pluie_mm", "Vent_kmh", 
+                         "anomalie_pluie", "anomalie_vent")
+
+
+resultats_adf <- data.frame(
+  Variable = variables_a_tester,
+  p_value = sapply(variables_a_tester, function(var) {
+    adf.test(base[[var]])$p.value
+  }),
+  Stationnaire = sapply(variables_a_tester, function(var) {
+    ifelse(adf.test(base[[var]])$p.value < 0.05, "Oui", "Non")
+  }))
+
+print(resultats_adf)
+```
+
+```{r}
+autres_origines_diff <- diff(base$Autres.origines)
+cat("\n=== ADF après différence première : Autres origines ===\n")
+print(adf.test(autres_origines_diff))
+```
+
+# 7. Graphique pour le corps du texte
+
+```{r}
+df_plot <- data.frame(
+  Temps = seq(from = 2011, to = 2023 + 11/12, length.out = length(base$Origine.Métropole)),
+  Métropole = base$Origine.Métropole,
+  Hors_Métropole = base$Autres.origines)
+
+ggplot(df_plot, aes(x = Temps)) +
+  geom_line(aes(y = Métropole, color = "Arrivées depuis la métropole"), linewidth = 1.1) +
+  geom_line(aes(y = Hors_Métropole, color = "Arrivées hors métropole"), linewidth = 1.1) +
+  
+  scale_color_manual(
+    values = c(
+      "Arrivées depuis la métropole" = "#1F77B4",
+      "Arrivées hors métropole" = "#FF7F0E")) +
+  
+  scale_x_continuous(
+    breaks = 2011:2023) +
+  
+  labs(
+    title = "Origine des arrivées aux aéroports de Roland-Garros et de Pierrefonds",
+    subtitle = "Flux mensuels des arrivées aériennes de passagers (2011–2023)",
+    x = "Année",
+    y = "Nombre de passagers",
+    color = "Origine des arrivées") +
+  
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold", size = 14))
+```
+
+```{r}
+base_graph <- base |>
+  mutate(Date_graph = as.Date(paste0(Date, "-01")),
+         pluie_seuil = ifelse(anomalie_pluie > 9, "Au-dessus du seuil", "Sous le seuil"))
+
+graph_anomalie_pluie <- ggplot(base_graph, aes(x = Date_graph, y = anomalie_pluie)) +
+  geom_line(color = "grey40", linewidth = 0.6, alpha = 0.8) +
+  geom_point(aes(color = pluie_seuil), size = 2.2) +
+  geom_hline(yintercept = 9, color = "red", linetype = "dashed", linewidth = 0.8) +
+  annotate(
+    "label",
+    x = as.Date("2012-01-01"),
+    y = max(base_graph$anomalie_pluie, na.rm = TRUE) * 0.85,
+    label = "Seuil pluie extrême = 9 mm",
+    color = "red",
+    fill = "white",
+    label.size = 0.3,
+    size = 3.5) +
+  scale_color_manual(
+    values = c("Sous le seuil" = "steelblue", "Au-dessus du seuil" = "red")) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  labs(
+    title = "Anomalie mensuelle de pluie à La Réunion",
+    subtitle = "Identification des épisodes de pluie extrême",
+    x = "Année",
+    y = "Anomalie de pluie (mm)",
+    color = "") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(size = 9),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom")
+
+graph_anomalie_pluie
+```
+
+```{r}
+base_graph <- base_graph |>
+  mutate(vent_seuil = ifelse(anomalie_vent > 4, "Au-dessus du seuil", "Sous le seuil"))
+
+graph_anomalie_vent <- ggplot(base_graph, aes(x = Date_graph, y = anomalie_vent)) +
+  geom_line(color = "grey40", linewidth = 0.6, alpha = 0.8) +
+  geom_point(aes(color = vent_seuil), size = 2.2) +
+  geom_hline(yintercept = 4, color = "red", linetype = "dashed", linewidth = 0.8) +
+  annotate(
+    "label",
+    x = as.Date("2012-01-01"),
+    y = max(base_graph$anomalie_vent, na.rm = TRUE) * 0.85,
+    label = "Seuil vent extrême = 4 km/h",
+    color = "red",
+    fill = "white",
+    linewidth = 0.3,
+    size = 3.5) +
+  scale_color_manual(
+    values = c("Sous le seuil" = "steelblue", "Au-dessus du seuil" = "red")) +
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  labs(
+    title = "Anomalie mensuelle de vent à La Réunion",
+    subtitle = "Identification des épisodes de vent extrême",
+    x = "Année",
+    y = "Anomalie de vent (km/h)",
+    color = "") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(size = 10),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom")
+
+graph_anomalie_vent
+
+```
+
+```{r}
+verification_mois_ref <- base |>
+  mutate(
+    trafic_total = Origine.Métropole + Autres.origines,
+    mois = format(as.Date(paste0(Date, "-01")), "%m")) |>
+  group_by(mois) |>
+  summarise(
+    moyenne_mois = mean(trafic_total, na.rm = TRUE),
+    .groups = "drop") |>
+  mutate(
+    moyenne_generale = mean(base$Origine.Métropole + base$Autres.origines, na.rm = TRUE),
+    ecart_moyenne = abs(moyenne_mois - moyenne_generale)) |>
+  arrange(ecart_moyenne)
+
+verification_mois_ref
+```
