@@ -18,6 +18,7 @@ library(reshape2)
 library(seastests)
 library(tseries)
 library(urca)
+library(RColorBrewer)
 ```
 
 # 2. Importation de la base de données
